@@ -1,0 +1,1015 @@
+; Program Name: INSTR3MT
+; Author(s): Camden Flannagan
+; Description: Version 3 of INSTRMNT
+
+.nolist
+#include "ti83plus.inc"
+.list
+
+	.org userMem-2
+	.db $BB,$6D
+	; Program code goes here
+	
+	ld hl, VarE
+	b_call(_Mov9ToOp1)
+	b_call(_FindSym)
+	;ret c
+	ex de, hl
+	b_call(_Mov9ToOp1)
+	b_call(_ConvOp1)
+	ld a, e
+	ld (octave_size), a
+	
+; move the contents of L1 into the chromatic array
+	add a, a
+    ld b, a
+    add a, a
+    add a, b
+	dec a
+	ld b, a
+_LOneToArray:
+	push bc
+	ld hl, L1Name
+	rst rMov9ToOP1
+	b_call(_FindSym)
+	pop bc
+	
+	ld a, b
+	inc a
+	
+	push bc
+	ld l, a			; which element we want
+	ld h, 0
+	b_call(_GetLToOP1)
+	b_call(_ConvOP1)	; the desired element is now in DE
+	pop bc
+	
+	push bc
+	ld ix, chromatic
+	call SetArray16
+	pop bc
+	
+	djnz _LOneToArray
+; final loop, for when b == 0. small brain but it works
+	ld b, 0
+	push bc
+	ld hl, L1Name
+	rst rMov9ToOP1
+	b_call(_FindSym)
+	pop bc
+	
+	ld a, b
+	inc a
+	
+	push bc
+	ld l, a			; which element we want
+	ld h, 0
+	b_call(_GetLToOP1)
+	b_call(_ConvOP1)	; the desired element is now in DE
+	pop bc
+	
+	push bc
+	ld ix, chromatic
+	call SetArray16
+	pop bc
+
+; move the contents of L2 into the custom_mode array
+	ld b, 14
+_LTwoToArray:
+	push bc
+	ld hl, L2Name
+	rst rMov9ToOP1
+	b_call(_FindSym)
+	pop bc
+	
+	ld a, b
+	inc a
+	
+	push bc
+	ld l, a			; which element we want
+	ld h, 0
+	b_call(_GetLToOP1)
+	b_call(_ConvOP1)	; the desired element is now in DE
+	pop bc
+	
+	push bc
+	ld ix, custom_mode
+	call SetArray8
+	pop bc
+	
+	djnz _LTwoToArray
+; final loop, for when b == 0. small brain but it works
+	ld b, 0
+	push bc
+	ld hl, L2Name
+	rst rMov9ToOP1
+	b_call(_FindSym)
+	pop bc
+	
+	ld a, b
+	inc a
+	
+	push bc
+	ld l, a			; which element we want
+	ld h, 0
+	b_call(_GetLToOP1)
+	b_call(_ConvOP1)	; the desired element is now in DE
+	pop bc
+	
+	push bc
+	ld ix, custom_mode
+	call SetArray8
+	pop bc
+	
+; set up stuff
+	b_call(_ClrScrn)
+	di	; stop the strange magic
+	ld hl, ionian			; initialize the mode to ionian
+	ld (current_mode), hl
+	ld a, 24				; initialize the key as A
+	ld (current_key), a
+	ld hl, ionianText
+	call DisplayMode
+	call DisplayKey
+	xor a					; intialize the port as off
+	push af
+	ld hl, 1				; load 1 into hl so the delay loop only executes once
+	
+	
+; the delay loop is the heart of the instrument. It allows for the space between
+; port bit flips to be controlled
+_Delay:
+	dec hl			; 6 cycles
+	ld a, h			; 4 cycles
+	or l			; 4 cycles
+	jr NZ, _Delay	; 12/7 cycles	;
+MainLoop:
+
+	ld a, $BF					; 7 cycles
+	out (1), a					; 11 cycles
+	nop							; 4 cycles
+	nop							; 4 cycles
+	in a, (1)					; 11 cycles
+	cp 223						; 7 cycles
+	jp Z, _DownHalfStep			; 10 cycles		; 54 cycles from MainLoop
+	cp 191						; 7 cycles
+	jp Z, _UpHalfStep			; 10 cycles		; 71 cycles from MainLoop
+	jp _StayHalfStep			; 10 cycles		; 81 cycles from MainLoop
+_AfterHalfStep:
+
+	; set button line one
+	ld a, $DF					; 7 cycles
+	out (1), a					; 11 cycles
+	nop							; 4 cycles
+	nop							; 4 cycles
+	in a, (1)					; 11 cycles		; 37 cycles from MainLoop
+	cp 253						; 7 cycles
+	jp Z, _BaseKeyOne			; 10 cycles		; 54 cycles from MainLoop
+	cp 251						; 7 cycles
+	jp Z, _BaseKeyTwo			; 10 cycles		; 71 cycles from MainLoop
+	cp 247						; 7 cycles
+	jp Z, _BaseKeyThree			; 10 cycles		; 88 cycles from MainLoop
+	cp 239						; 7 cycles
+	jp Z, _BaseKeyFour			; 10 cycles		; 105 cycles from MainLoop
+	cp 223						; 7 cycles
+	jp Z, _BaseKeyFive			; 10 cycles		; 122 cycles from MainLoop
+	cp 191						; 7 cycles
+	jp Z, _BaseKeySix			; 10 cycles		; 139 cycles from MainLoop
+	cp 127						; 7 cycles
+	jp Z, _BaseKeySeven			; 10 cycles		; 156 cycles from MainLoop
+	
+	; set button line two
+	ld a, $EF					; 7 cycles
+	out (1), a					; 11 cycles
+	nop							; 4 cycles
+	nop							; 4 cycles
+	in a, (1)					; 11 cycles		; 193 cycles from MainLoop
+	cp 254						; 7 cycles	
+	jp Z, _TrebleKeyOne			; 10 cycles		; 210 cycles from MainLoop
+	cp 253						; 7 cycles
+	jp Z, _TrebleKeyThree		; 10 cycles		; 227 cycles from MainLoop
+	cp 251						; 7 cycles
+	jp Z, _TrebleKeyFive		; 10 cycles		; 244 cycles from MainLoop
+	cp 247						; 7 cycles
+	jp Z, _TrebleKeySeven		; 10 cycles		; 261 cycles from MainLoop
+	
+	; set buttonLineThree
+	ld a, $F7					; 7 cycles
+	out (1), a					; 11 cycles
+	nop							; 4 cycles
+	nop							; 4 cycles
+	in a, (1)					; 11 cycles		; 298 cycles from MainLoop
+	cp 254						; 7 cycles
+	jp Z, _TrebleKeyTwo			; 10 cycles		; 315 cycles from MainLoop
+	cp 253						; 7 cycles
+	jp Z, _TrebleKeyFour		; 10 cycles		; 332 cycles from MainLoop	
+	cp 251						; 7 cycles
+	jp Z, _TrebleKeySix			; 10 cycles		; 349 cycles from MainLoop
+	cp 247						; 7 cycles
+	jp Z, _TrebleKeyEight		; 10 cycles		; 366 cycles from MainLoop
+	
+	ld a, $FE
+	out (1), a
+	nop
+	nop
+	in a, (1)
+	bit 0, a
+	jp Z, _Down
+	bit 1, a
+	jp Z, _Left
+	bit 2, a
+	jp Z, _Right
+	bit 3, a
+	jp Z, _Up
+	
+	ld a, $EF
+	out (1), a
+	nop
+	nop
+	in a, (1)
+	bit 4, a
+	jp Z, _KeyA
+	bit 5, a
+	jp Z, _KeyCSharp
+	bit 6, a
+	jp Z, _KeyF
+	
+	ld a, $F7
+	out (1), a
+	nop
+	nop
+	in a, (1)
+	bit 4, a
+	jp Z, _KeyASharp
+	bit 5, a
+	jp Z, _KeyD
+	bit 6, a
+	jp Z, _KeyFSharp
+	
+	ld a, $FB
+	out (1), a
+	nop
+	nop
+	in a, (1)
+	bit 0, a
+	jp Z, _Ionian
+	bit 1, a
+	jp Z, _Phrygian
+	bit 2, a
+	jp Z, _Mixolydian
+	bit 3, a
+	jp Z, _HarmonicMinor
+	bit 4, a
+	jp Z, _KeyB
+	bit 5, a
+	jp Z, _KeyDSharp
+	bit 6, a
+	jp Z, _KeyG
+	
+	ld a, $FD
+	out (1), a
+	nop
+	nop
+	in a, (1)
+	bit 0, a
+	jp Z, _Dorian
+	bit 1, a
+	jp Z, _Lydian
+	bit 2, a
+	jp Z, _Aeolian
+	bit 3, a
+	jp Z, _CustomMode
+	bit 4, a
+	jp Z, _KeyC
+	bit 5, a
+	jp Z, _KeyE
+	bit 6, a
+	jp Z, _KeyGSharp
+	
+	ld a, $BF
+	out (1), a
+	nop
+	nop
+	in a, (1)
+	bit 7, a
+	jp Z, ExitPrgm
+	
+	jp MainLoop
+_UpHalfStep:				;				; 54 cycles from MainLoop
+	ld bc, dump				; 10 cycles
+	ld bc, dump				; 10 cycles
+	ld b, 2					; 7 cycles
+	ld a, (halfstep)		; 13 cycles
+	ld a, 1					; 7 cycles
+	ld (halfstep), a		; 13 cycles
+	jp _AfterHalfStep		; 10 cycles		; 124 cycles from MainLoop
+_DownHalfStep:				;				; 71 cycles from MainLoop
+	ld bc, dump				; 10 cycles
+	ld a, (halfstep)		; 13 cycles
+	ld a, 255				; 7 cycles
+	ld (halfstep), a		; 13 cycles
+	jp _AfterHalfStep		; 10 cycles		; 124 cycles from MainLoop
+_StayHalfStep:				;				; 81 cycles from MainLoop
+	ld a, (halfstep)		; 13 cycles
+	ld a, 0					; 7 cycles
+	ld (halfstep), a		; 13 cycles
+	jp _AfterHalfStep		; 10 cycles		; 124 cycles from MainLoop
+_KeyA:
+	ld a, 24
+	ld (current_key), a
+	call DisplayKey
+	jp MainLoop
+_KeyASharp:
+	ld a, 25
+	ld (current_key), a
+	call DisplayKey
+	jp MainLoop
+_KeyB:
+	ld a, 26
+	ld (current_key), a
+	call DisplayKey
+	jp MainLoop
+_KeyC:
+	ld a, 27
+	ld (current_key), a
+	call DisplayKey
+	jp MainLoop
+_KeyCSharp:
+	ld a, 28
+	ld (current_key), a
+	call DisplayKey
+	jp MainLoop
+_KeyD:
+	ld a, 29
+	ld (current_key), a
+	call DisplayKey
+	jp MainLoop
+_KeyDSharp:
+	ld a, 30
+	ld (current_key), a
+	call DisplayKey
+	jp MainLoop
+_KeyE:
+	ld a, 31
+	ld (current_key), a
+	call DisplayKey
+	jp MainLoop
+_KeyF:
+	ld a, 32
+	ld (current_key), a
+	call DisplayKey
+	jp MainLoop
+_KeyFSharp:
+	ld a, 33
+	ld (current_key), a
+	call DisplayKey
+	jp MainLoop
+_KeyG:
+	ld a, 34
+	ld (current_key), a
+	call DisplayKey
+	jp MainLoop
+_KeyGSharp:
+	ld a, 35
+	ld (current_key), a
+	call DisplayKey
+	jp MainLoop
+_Ionian:
+	ld hl, ionianText
+	call DisplayMode
+	ld hl, ionian
+	ld (current_mode), hl
+	ld hl, 1
+	jp MainLoop
+_Dorian:
+	ld hl, dorianText
+	call DisplayMode
+	ld hl, dorian
+	ld (current_mode), hl
+	ld hl, 1
+	jp MainLoop
+_Phrygian:
+	ld hl, phrygianText
+	call DisplayMode
+	ld hl, phrygian
+	ld (current_mode), hl
+	ld hl, 1
+	jp MainLoop
+_Lydian:
+	ld hl, lydianText
+	call DisplayMode
+	ld hl, lydian
+	ld (current_mode), hl
+	ld hl, 1
+	jp MainLoop
+_Mixolydian:
+	ld hl, mixolydianText
+	call DisplayMode
+	ld hl, mixolydian
+	ld (current_mode), hl
+	ld hl, 1
+	jp MainLoop
+_Aeolian:
+	ld hl, aeolianText
+	call DisplayMode
+	ld hl, aeolian
+	ld (current_mode), hl
+	ld hl, 1
+	jp MainLoop
+_HarmonicMinor:
+	ld hl, harmonicMinorText
+	call DisplayMode
+	ld hl, harmonic_minor
+	ld (current_mode), hl
+	ld hl, 1
+	jp MainLoop
+_CustomMode:
+	ld hl, customModeText
+	call DisplayMode
+	ld hl, custom_mode
+	ld (current_mode), hl
+	ld hl, 1
+	jp MainLoop
+_Down:
+	ld a, (current_key)
+	ld hl, octave_size
+	ld b, (hl)
+	sub b
+	ld (current_key), a
+_HeldDown:
+	ld a, $FE
+	out (1), a
+	nop
+	nop
+	in a, (1)
+	bit 0, a
+	jp Z, _HeldDown
+	ld bc, 1000
+_DebounceDown:
+	dec bc
+	ld a, b
+	or c
+	jp NZ, _DebounceDown
+	jp MainLoop
+_Left:
+	ld a, (current_key)
+	dec a
+	ld (current_key), a
+	call DisplayKey
+_HeldLeft:
+	ld a, $FE
+	out (1), a
+	nop
+	nop
+	in a, (1)
+	bit 1, a
+	jp Z, _HeldLeft
+	ld bc, 1000
+_DebounceLeft:
+	dec bc
+	ld a, b
+	or c
+	jp NZ, _DebounceLeft
+	jp MainLoop
+_Right:
+	ld a, (current_key)
+	inc a
+	ld (current_key), a
+	call DisplayKey
+_HeldRight:
+	ld a, $FE
+	out (1), a
+	nop
+	nop
+	in a, (1)
+	bit 2, a
+	jp Z, _HeldRight
+	ld bc, 1000
+_DebounceRight:
+	dec bc
+	ld a, b
+	or c
+	jp NZ, _DebounceRight
+	jp MainLoop
+_Up:
+	ld a, (current_key)
+	ld hl, octave_size
+	ld b, (hl)
+	add a, b
+	ld (current_key), a
+_HeldUp:
+	ld a, $FE
+	out (1), a
+	nop
+	nop
+	in a, (1)
+	bit 3, a
+	jp Z, _HeldUp
+	ld bc, 1000
+_DebounceUp:
+	dec bc
+	ld a, b
+	or c
+	jp NZ, _DebounceUp
+	jp MainLoop
+
+; these 15 sections assign reg A based on the button pressed
+; _BrainCode will decide what to do with that information
+_BaseKeyOne:		;				; 54 cycles from MainLoop
+	ld IX, dump		; 14 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	jr $+2			; 12 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld a, 0			; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cycles from MainLoop
+	
+_BaseKeyTwo:		;				; 71 cycles from MainLoop
+	ld IX, dump		; 14 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	jr $+2			; 12 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld a, 1			; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cycles from MainLoop
+	
+_BaseKeyThree:		;				; 88 cycles from MainLoop
+	ld IX, dump		; 14 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	jr $+2			; 12 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld a, 2			; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cycles from MainLoop
+	
+_BaseKeyFour:		;				; 105 cycles from MainLoop
+	ld IX, dump		; 14 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	jr $+2			; 12 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld a, 3			; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cycles from MainLoop
+	
+_BaseKeyFive:		;				; 122 cycles from MainLoop
+	ld IX, dump		; 14 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	jr $+2			; 12 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld a, 4			; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cycles from MainLoop
+	
+_BaseKeySix:		;				; 139 cycles from MainLoop
+	ld IX, dump		; 14 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	jr $+2			; 12 cycles
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld a, 5			; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cycles from MainLoop
+	
+_BaseKeySeven:		;				; 156 cycles from MainLoop
+	ld IX, dump		; 14 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	jr $+2			; 12 cycles
+	ld a, 6			; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cycles from MainLoop
+
+_TrebleKeyOne:		;				; 210 cycles from MainLoop
+	ld IX, dump		; 14 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	nop				; 4 cycles
+	ld a, 7			; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cyles from MainLoop
+
+_TrebleKeyTwo:		;				; 315 cycles from MainLoop
+	ld IX, dump		; 14 cycles
+	ld IX, dump		; 14 cycles
+	rlc (IX + 0)	; 23 cycles
+	ld a, 8			; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cycles from MainLoop
+
+_TrebleKeyThree:	;				; 227 cycles from MainLoop
+	ld IX, dump		; 14 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	ld bc, dump		; 10 cycles
+	ld a, 9			; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cycles from MainLoop
+
+_TrebleKeyFour:		;				; 332 cycles from MainLoop
+	ld IX, dump		; 14 cycles
+	ld (dump), IX	; 20 cycles
+	ld a, 10		; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cycles from MainLoop
+
+_TrebleKeyFive:		;				; 244 cycles from MainLoop
+	ld IX, dump		; 14 cycles
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycls
+	rlc (IX + 0)	; 23 cycles
+	rlc (IX + 0)	; 23 cycles
+	ld hl, (dump)	; 16 cycles
+	ld a, 11		; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cycles from MainLoop
+
+_TrebleKeySix:		;				; 349 cycles from MainLoop
+	ld bc, dump		; 10 cycles
+	ld h, 2			; 7 cycles
+	ld a, 12		; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cycles from MainLoop
+
+_TrebleKeySeven:	;				; 261 cycles from MainLoop
+	ld IX, dump		; 14 cycles
+	ld (IX + 0), 2	; 19 cycles
+	ld (IX + 0), 2	; 19 cycles
+	ld (IX + 0), 2	; 19 cycles
+	ld (IX + 0), 2	; 19 cycles
+	ld h, 2			; 7 cycles
+	rlc h			; 8 cycles
+	ld a, 13		; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cycles from MainLoop
+	
+_TrebleKeyEight:	;				; 366 cycles from MainLoop
+	ld a, 14		; 7 cycles
+	jp _BrainCode	; 10 cycles		; 383 cycles from MainLoop
+	
+; this section is the brain of the instrument, setting the delay based on
+; a combination of the button pressed, the current musical key, and the 
+; current musical mode
+_BrainCode:									; 				; 383 cycles from MainLoop
+	ld (mode_array_index),	a				; 13 cycles
+	ld ix, (current_mode)					; 20 cycles
+mode_array_index	.equ	$+2
+	ld a, (ix + 0)							; 19 cycles
+	ld hl, current_key						; 10 cycles
+	add a, (hl)								; 7 cycles
+	ld hl, halfstep							; 10 cycles
+	add a, (hl)								; 7 cycles
+	sla a									; 8 cycles
+	ld (chromatic_array_index_low), a		; 13 cycles
+	inc a									; 4 cycles
+	ld (chromatic_array_index_high), a		; 13 cycles
+	ld ix, chromatic						; 14 cycles
+chromatic_array_index_low	.equ	$+2
+	ld a, (ix + 0)							; 19 cycles
+	ld l, a									; 4 cycles
+chromatic_array_index_high	.equ	$+2
+	ld a, (ix + 0)							; 19 cycles
+	ld h, a									; 4 cycles		; 567 cycles from MainLoop
+; the previous section, _BrainCode continues into this section, _FlipPortBit
+_FlipPortBit:		;				; 567 cycles from MainLoop
+	pop af			; 10 cycles
+	out (0), a		; 11 cycles
+	xor 3			; 7 cycles
+	push af			; 11 cycles
+	jp _Delay		; 10 cycles		; 616 cycles from MainLoop
+ExitPrgm:
+	xor a
+	out (0), a
+	pop af
+	ei	; release the strange magic
+	
+	ret
+	
+; ~~~ Variables ~~~
+current_key:
+.db		0
+
+current_mode:
+.dw		0
+
+octave_size:
+.db		12
+
+ionian:
+.db		0,  2,  4,  5,  7,  9,  11
+.db		12, 14, 16, 17, 19, 21, 23, 24
+
+dorian:
+.db		0,  2,  3,  5,  7,  9,  10
+.db		12, 14, 15, 17, 19, 21, 22, 24
+
+phrygian:
+.db		0,  1,  3,  5,  7,  8,  10
+.db		12, 13, 15, 17, 19, 20, 22, 24
+
+lydian:
+.db		0,  2,  4,  6,  7,  9,  11
+.db		12, 14, 16, 18, 19, 21, 23, 24
+
+mixolydian:
+.db		0,  2,  4,  5,  7,  9,  10
+.db		12, 14, 16, 17, 19, 21, 22, 24
+
+aeolian:
+.db		0,  2,  3,  5,  7,  8,  10
+.db		12, 14, 15, 17, 19, 20, 22, 24
+
+harmonic_minor:
+.db		0,  2,  3,  5,  7,  8,  11
+.db		12, 14, 15, 17, 19, 20, 23, 24
+
+custom_mode:
+.db		0,  2,  4,  5,  7,  8,  10
+.db		12, 14, 16, 17, 19, 20, 22, 24
+
+chromatic:
+.dw     4598, 4338, 4093, 3862, 3643, 3437, 3243, 3059, 2886, 2722, 2568, 2422 
+.dw     2285, 2155, 2032, 1917, 1808, 1705, 1607, 1516, 1429, 1347, 1270, 1197 
+.dw     1128, 1063, 1002, 944, 890, 838, 790, 744, 700, 659, 621, 584 
+.dw     550, 518, 487, 458, 431, 405, 381, 358, 336, 316, 296, 278 
+.dw     261, 245, 229, 215, 201, 188, 176, 165, 154, 144, 134, 125 
+.dw     116, 108, 101, 93, 87, 80, 74, 68, 63, 58, 53, 48
+.dw     44, 40, 36, 33, 29, 26, 23, 20, 17, 15, 12, 10
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ; probably shouldn't go past this, 'cause 8 bit overflow att 255
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.dw		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+dump:	; this helps me waste cycles doing memory things
+.dw		0
+
+; held informs the program if an arrow key is being held
+held:
+.db		0
+
+halfstep:
+.db		0
+
+L1Name:
+.db ListObj, tVarLst, tL1, 0, 0
+
+L2Name:
+.db ListObj, tVarLst, tL2, 0, 0
+
+VarE:
+.db		RealObj, 'E', $00, $00
+
+; retrieve and print element of arr
+; input ix array to get element from
+; input b index of element
+; output hl is arr[index]
+; destroys c
+GetArray16:
+	ld c, b
+	ld b, 0
+	
+	ld h, b				; double index
+	ld l, c
+	add hl, bc
+	ld b, h
+	ld c, l
+	
+	add ix, bc			; offset array by index
+	
+	ld a, (ix + 0)		; access array at index and store in hl
+	ld l, a
+	ld a, (ix + 1)
+	ld h, a
+
+	ret
+
+; change and then retrieve and print element of arr
+; input ix is array
+; input b is index to set
+; input de is array[index] = de
+; destroys c
+SetArray16:
+	ld c, b
+	ld b, 0
+
+	ld h, b
+	ld l, c
+	add hl, bc
+	ld b, h
+	ld c, l
+	
+	add ix, bc
+	
+	ld a, e
+	ld (ix + 0), a
+	ld a, d
+	ld (ix + 1), a
+
+	ret
+	
+; change and then retrieve and print element of arr
+; input ix is array
+; input b is index to set
+; input de is array[index] = de
+; destroys c
+SetArray8:
+	ld c, b
+	ld b, 0
+	
+	add ix, bc
+	
+	ld a, e
+	ld (ix + 0), a
+	
+	ret
+	
+;inputs
+;	hl address of mode text
+DisplayMode:
+	ei
+
+	ld a, 1
+	ld (CurRow), a
+	ld a, 0
+	ld (CurCol), a
+	b_call(_PutS)
+
+	di
+	
+	ret
+	
+; display the key (anytime key changes)
+DisplayKey:
+	ei
+	
+	ld a, 2
+	ld (CurRow), a
+	ld a, 0
+	ld (CurCol), a
+	ld hl, keyText
+	b_call(_PutS)
+	
+	ld a, 2
+	ld (CurRow), a
+	ld a, 5
+	ld (CurCol), a
+	
+	ld a, (current_key)		;index for key name
+	ld c, 12
+	call Divide				;a=a%12
+	add a,a					;multiply by six
+    ld b,a
+    add a,a
+    add a,b
+	ld d, 0
+	ld e, a
+	ld hl, keyValue			;offSet keyValue by index*6
+	add hl, de
+	b_call(_PutS)
+	
+	di
+	
+	ret
+
+;Divide
+;Inputs:
+;	A=divisor
+;	C=dividend
+;
+;Outputs:
+;	B=A/C
+;	A=A%C	(the remainder)
+;
+Divide:
+	ld b,0
+DivLoop:
+	sub a,c
+	jr c, DivEnd
+	inc b
+	jr DivLoop
+DivEnd:
+	add a,c
+	ret
+	
+ionianText:
+.db "Ionian (Major)  ", 0
+dorianText:
+.db "Dorian          ", 0
+phrygianText:
+.db "Phrygian        ", 0
+lydianText:
+.db "Lydian          ", 0
+mixolydianText:
+.db "Mixolydian      ", 0
+aeolianText:
+.db "Aeolian (Minor) ", 0
+harmonicMinorText:
+.db "Harmonic Minor  ", 0
+customModeText:
+.db "Custom Mode     ", 0
+
+keyText:
+.db "Key:", 0
+
+keyValue:
+.db "A    ", 0, "A#/Bb", 0
+.db "B    ", 0, "C    ", 0
+.db "C#/Db", 0, "D    ", 0
+.db "D#/Eb", 0, "E    ", 0
+.db "F    ", 0, "F#/Gb", 0
+.db "G    ", 0, "G#/Ab", 0
