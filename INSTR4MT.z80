@@ -1,6 +1,6 @@
-; Program Name: INSTR3MT
+; Program Name: INSTR4MT
 ; Author(s): Camden Flannagan
-; Description: Version 3 of INSTRMNT
+; Description: Version 4 of INSTRMNT
 
 .nolist
 #include "ti83plus.inc"
